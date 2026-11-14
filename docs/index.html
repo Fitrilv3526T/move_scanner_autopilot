@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Move Scanner Autopilot</title>
+<style>
+:root{--bg:#0e1117;--panel:#161b24;--line:#262d3a;--txt:#e6e9ef;--dim:#8b95a5;--green:#4ade80;--red:#f87171;--amber:#fbbf24;--blue:#60a5fa}
+@media (prefers-color-scheme: light){:root{--bg:#f5f6f8;--panel:#fff;--line:#dfe3ea;--txt:#171b22;--dim:#5d6676;--green:#15803d;--red:#b91c1c;--amber:#b45309;--blue:#1d4ed8}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1250px;margin:0 auto;padding:14px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+h1{font-size:18px;margin:0}h1 small{color:var(--dim);font-weight:400;font-size:12px;margin-left:8px}
+.status{color:var(--dim);font-size:12px}.status.ok{color:var(--green)}.status.bad{color:var(--red)}
+button{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}button:hover{border-color:var(--blue)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px}.card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.04em}.card .v{font-size:17px;font-weight:600}.card .s{color:var(--dim);font-size:11px;margin-top:2px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}.tabs button.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px;white-space:nowrap}th{color:var(--dim);font-weight:500;text-align:right;border-bottom:1px solid var(--line);padding:5px 8px}th.l,td.l{text-align:left}td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right}
+.pos{color:var(--green)}.neg{color:var(--red)}.dim{color:var(--dim)}
+.tag{padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600}.tag.long{background:rgba(74,222,128,.15);color:var(--green)}.tag.short{background:rgba(248,113,113,.15);color:var(--red)}.tag.flag{background:var(--amber);color:#000}
+.hz{display:inline-flex;gap:2px}.hz span{display:inline-block;min-width:30px;padding:2px 3px;border-radius:4px;font-size:11.5px;text-align:center;color:#fff}
+.hint{color:var(--dim);font-size:12px;margin:0 0 8px}.warn{background:rgba(251,191,36,.12);border:1px solid var(--amber);color:var(--amber);border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:12.5px}
+.rules h3{margin:14px 0 4px;font-size:14px}.rules p,.rules li{font-size:13px}.rules code{background:var(--bg);padding:1px 5px;border-radius:4px}
+.dl{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.dl a{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 10px;color:var(--blue);text-decoration:none;font-size:12.5px}
+footer{color:var(--dim);font-size:11.5px;margin-top:12px}
+.spark{display:flex;align-items:flex-end;gap:2px;height:40px}.spark div{width:8px;background:var(--blue);opacity:.7;border-radius:2px 2px 0 0}
+</style></head><body><div class="wrap">
+<header><h1>Move Scanner Autopilot <small>runs by itself on GitHub every 15 min &middot; collects data &middot; no orders, no keys</small></h1>
+<div><span id="status" class="status">Loading...</span> <button id="btnRefresh">Reload</button></div></header>
+<div id="errs"></div>
+<div class="cards">
+<div class="card"><div class="k">Signals logged</div><div class="v" id="kSig">-</div><div class="s" id="kSig2"></div></div>
+<div class="card"><div class="k">Outcomes resolved</div><div class="v" id="kOut">-</div><div class="s" id="kOut2"></div></div>
+<div class="card"><div class="k">Direction accuracy (1h, lean&ge;5)</div><div class="v" id="kDir">-</div><div class="s" id="kDir2"></div></div>
+<div class="card"><div class="k">Flagged event rate (1h)</div><div class="v" id="kFlag">-</div><div class="s" id="kFlag2"></div></div>
+<div class="card"><div class="k">Days collecting</div><div class="v" id="kDays">-</div><div class="s" id="kDays2"></div></div>
+<div class="card"><div class="k">Data size in repo</div><div class="v" id="kData">-</div><div class="s" id="kData2"></div></div>
+</div>
+<div class="tabs"><button data-t="h1" class="on">Live signals (1h)</button><button data-t="m15">Live signals (15m)</button><button data-t="calib">Live calibration</button><button data-t="data">Data &amp; download</button><button data-t="about">About</button></div>
+<div class="panel" id="tabBody">Loading...</div>
+<footer>Research tool. The engine and models are the stress-tested ones (validated 2022–2024, re-validated 2025–2026): magnitude model ~20% typical chance, direction lean 56–59% first-touch at 1h. This page never places orders and uses no API keys. Not financial advice. Data: Binance public market data via a scheduled GitHub job.</footer>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let S = { st: null, tab: 'h1' };
+const pct = (x, d = 1) => !Number.isFinite(x) ? '-' : (x * 100).toFixed(d) + '%';
+const tstr = (ms) => ms ? new Date(ms).toISOString().replace('T', ' ').slice(0, 16) + 'Z' : '-';
+const px = (x) => !Number.isFinite(x) ? '-' : x >= 100 ? x.toFixed(2) : x >= 1 ? x.toFixed(3) : x >= 0.01 ? x.toFixed(5) : x.toPrecision(3);
+const usd = (x) => !Number.isFinite(x) ? '-' : '$' + (x >= 1e9 ? (x / 1e9).toFixed(2) + 'B' : x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : Math.round(x / 1e3) + 'K');
+const heat = (p) => { const a = Math.max(0.10, Math.min(0.9, (p - 0.10) / 0.6)); return 'rgba(96,165,250,' + a.toFixed(2) + ')'; };
+function dirCell(d) {
+  if (d == null) return '<span class="dim">–</span>';
+  const up = d > 0.5;
+  return '<span class="tag ' + (up ? 'long' : 'short') + '">' + (up ? 'Up ' : 'Down ') + Math.round((up ? d : 1 - d) * 100) + '%</span>';
+}
+function render() {
+  const st = S.st; if (!st) return;
+  $('kSig').textContent = st.totals.signals.toLocaleString();
+  $('kSig2').textContent = st.byTf['1h'].sig.toLocaleString() + ' at 1h · ' + st.byTf['15m'].sig.toLocaleString() + ' at 15m';
+  $('kOut').textContent = st.totals.outcomes.toLocaleString();
+  $('kOut2').textContent = st.pendingN + ' awaiting their window';
+  const h1 = st.headline['1h'];
+  $('kDir').textContent = h1.leanAcc5 != null ? pct(h1.leanAcc5, 1) : '-';
+  $('kDir').textContent = h1.leanAcc5 != null ? pct(h1.leanAcc5, 1) : '-';
+  $('kDir2').textContent = h1.leanN5 ? 'model claimed ' + pct(h1.leanPred5, 1) + ' · n=' + h1.leanN5.toLocaleString() : 'needs resolved signals';
+  $('kFlag').textContent = h1.flagHit != null ? pct(h1.flagHit, 1) : '-';
+  $('kFlag2').textContent = h1.flagN ? 'n=' + h1.flagN.toLocaleString() + ' flagged rows (top 5%)' : 'needs resolved signals';
+  const days = Math.max(0, (Date.now() - st.startMs) / 86400000);
+  $('kDays').textContent = days < 1 ? days.toFixed(1) : Math.floor(days) + '';
+  $('kDays2').textContent = 'since ' + tstr(st.startMs).slice(0, 10);
+  $('kData').textContent = (st.storageBytes / 1e6).toFixed(1) + ' MB';
+  $('kData2').textContent = st.universe + ' coins scanned · run ' + (st.runMs / 1000).toFixed(0) + 's';
+  const age = (Date.now() - st.updatedMs) / 60000, msgs = [];
+  if (age > 45) msgs.push('Data is ' + (age / 60).toFixed(1) + ' hours old. GitHub may have paused the scheduled job (it does that after 60 days with no repo activity): open the Actions tab and re-enable the workflow.');
+  for (const tf of ['15m', '1h']) if (st.perTf[tf] && st.perTf[tf].errs) msgs.push(st.perTf[tf].errs + ' coins failed to load at ' + tf + ' on the last run.');
+  $('errs').innerHTML = msgs.map(x => '<div class="warn">' + x + '</div>').join('');
+  renderTab();
+}
+function signalTable(tf) {
+  const st = S.st, rows = st.top[tf] || [], last = st.perTf[tf] ? st.perTf[tf].lastCloseMs : null;
+  if (!rows.length) return '<p class="hint">No rows yet.</p>';
+  let h = '<p class="hint">Top ' + rows.length + ' of ' + st.perTf[tf].nRanked + ' ranked coins by chance of any event-size move within 6 candles. Candle closed ' + tstr(last) + '. Heat cells: chance by look-ahead (at 15m: 15/30/45/60/75/90 min; at 1h: 1–6 hours). A flag means the coin was in the top 5% of that candle (the stress-tested band: 68–72% of those were followed by an event at 1h offline).</p>';
+  h += '<table><thead><tr><th class="l">#</th><th class="l">Coin</th><th>Price</th><th>24h</th><th colspan="6">Chance by look-ahead</th><th>Direction (6)</th><th>Event size 6 ↑/↓</th><th>Volume</th><th>Flag</th></tr></thead><tbody>';
+  rows.forEach((r, i) => {
+    const chg = r.chg != null ? '<span class="' + (r.chg >= 0 ? 'pos' : 'neg') + '">' + (r.chg >= 0 ? '+' : '') + r.chg.toFixed(1) + '%</span>' : '-';
+    h += '<tr><td class="l dim">' + (i + 1) + '</td><td class="l"><b>' + r.s.replace('USDT', '') + '</b></td><td>' + px(r.px) + '</td><td>' + chg + '</td><td colspan="6"><span class="hz">' +
+      r.pa.map(p => '<span style="background:' + heat(p) + '">' + Math.round(p * 100) + '</span>').join('') + '</span></td>' +
+      '<td>' + dirCell(r.dl[5]) + '</td><td>' + (Number.isFinite(r.u6) ? '↑ ' + r.u6.toFixed(2) + '% ↓ ' + r.d6.toFixed(2) + '%' : '–') + '</td><td>' + usd(r.dvd) + '</td><td>' + (r.fl ? '<span class="tag flag">TOP 5%</span>' : '') + '</td></tr>';
+  });
+  return h + '</tbody></table>';
+}
+function calibTable() {
+  const st = S.st;
+  let h = '<p class="hint">How the shipped models are holding up on live data they have never seen. Everything here is computed only from fully resolved signals (6 candles after the signal). Small numbers early are normal: at 1h the lean stats need ~1,000 resolved signals to be meaningful; expect weeks.</p>';
+  h += '<h3 style="font-size:14px;margin:10px 0 4px">Direction: first-touch accuracy when a lean is shown (P up first)</h3><table><thead><tr><th class="l">Timeframe · window</th><th>lean&ge;5 n</th><th>actual up rate</th><th>model claimed</th><th>lean&ge;10 n</th><th>actual up rate</th><th>lean&ge;15 n</th><th>actual up rate</th></tr></thead><tbody>';
+  for (const tf of ['1h', '15m']) for (const W of ['2', '3', '6']) {
+    const k = tf + '|' + W, d = st.dir && st.dir[k];
+    if (!d) continue;
+    const b = (bb) => d[bb] && d[bb].n ? pct(d[bb].up / d[bb].n, 1) + ' <span class="dim">(' + d[bb].n + ')</span>' : '<span class="dim">–</span>';
+    const cl = (bb) => d[bb] && d[bb].n ? pct(d[bb].pred / d[bb].n, 1) : '<span class="dim">–</span>';
+    h += '<tr><td class="l">' + tf + ' · next ' + W + ' candles</td><td>' + (d['5'] ? d['5'].n : 0) + '</td><td>' + b('5') + '</td><td>' + cl('5') + '</td><td>' + (d['10'] ? d['10'].n : 0) + '</td><td>' + b('10') + '</td><td>' + (d['15'] ? d['15'].n : 0) + '</td><td>' + b('15') + '</td></tr>';
+  }
+  h += '</tbody></table>';
+  h += '<h3 style="font-size:14px;margin:14px 0 4px">Magnitude: event rate among top-5% flagged rows (offline stress test: 68–72% at 1h)</h3><table><thead><tr><th class="l">Timeframe · window</th><th>n</th><th>event rate</th></tr></thead><tbody>';
+  if (st.mag) for (const tf of ['1h', '15m']) for (const W of ['2', '3', '6']) {
+    const m = st.mag[tf + '|' + W]; if (!m) continue;
+    h += '<tr><td class="l">' + tf + ' · next ' + W + ' candles</td><td>' + m.n + '</td><td>' + (m.n ? pct(m.hits / m.n, 1) : '–') + '</td></tr>';
+  }
+  h += '</tbody></table>';
+  h += '<h3 style="font-size:14px;margin:14px 0 4px">Calibration curve: chance of any move (W=6) vs what actually happened</h3><table><thead><tr><th class="l">Chance bucket</th>';
+  for (const tf of ['1h', '15m']) h += '<th>' + tf + ' n</th><th>' + tf + ' actual</th>';
+  h += '</tr></thead><tbody>';
+  if (st.calib) for (const bin of (st.calib['1h'] || {})['6'] || []) {
+    h += '<tr><td class="l">' + pct(bin.lo, 0) + '–' + pct(bin.hi, 0) + '</td>';
+    for (const tf of ['1h', '15m']) {
+      const b = ((st.calib[tf] || {})['6'] || []).find(x => x.lo === bin.lo);
+      h += '<td>' + (b ? b.n : 0) + '</td><td>' + (b && b.n ? pct(b.hits / b.n, 1) : '–') + '</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  if (st.daily && Object.keys(st.daily).length) {
+    const ds = Object.keys(st.daily).sort().slice(-30);
+    h += '<h3 style="font-size:14px;margin:14px 0 4px">Last 30 days of collection</h3><table><thead><tr><th class="l">Day</th><th>signals</th><th>outcomes</th></tr></thead><tbody>' +
+      ds.map(d => '<tr><td class="l">' + d + '</td><td>' + st.daily[d].sig + '</td><td>' + st.daily[d].out + '</td></tr>').join('') + '</tbody></table>';
+  }
+  return h;
+}
+function dataTab() {
+  const st = S.st;
+  let h = '<h3 style="font-size:14px;margin:4px 0">The data this repo is collecting</h3>';
+  h += '<p>Every 15 minutes the scheduled job appends one row per scanned coin to <code>signals-&lt;date&gt;.jsonl</code> — the full feature vector, all model probabilities, the direction lean, event sizes and the top-5% flag. Six candles later the outcome is resolved into <code>outcomes-&lt;date&gt;.jsonl</code>: first-touch direction per window, candles-to-touch, max favorable/adverse excursion. That pair of files is a complete live out-of-sample dataset for retraining both models.</p>';
+  if (st.files && st.files.length) {
+    h += '<div class="dl">' + st.files.filter(x => x.f.endsWith('.jsonl')).slice(0, 12).map(x => '<a href="data/' + x.f + '" download>' + x.f + ' <span class="dim">(' + (x.b / 1e3).toFixed(0) + ' KB)</span></a>').join('') + '</div>';
+  }
+  h += '<h3 style="font-size:14px;margin:12px 0 4px">How to bring the data back for the next improvement round</h3>';
+  h += '<ol style="font-size:13px;line-height:1.6"><li>Let it run at least 3–4 weeks (longer is better; the 15m file grows fastest).</li><li>Click <b>Code → Download ZIP</b> on your GitHub repo (or download the <code>data/*.jsonl</code> files from the links above).</li><li>Hand the zip to your analyst together with a note of anything odd you noticed (missing days, API errors on the Actions log).</li><li>Keep the job running afterwards — retraining does not interrupt collection.</li></ol>';
+  h += '<p class="hint">Files older than ' + (st.cfg && st.cfg.retentionDays || 120) + ' days are deleted automatically to keep the repo small. Download before then if you want the full history.</p>';
+  return h;
+}
+function aboutTab() {
+  return '<div class="rules"><h3>What this is</h3><p>An autopilot version of the move scanner: the same engine, bit for bit, that was stress-tested on 2022–2026 Binance data and shipped with the direction column. Instead of you pressing Scan, a scheduled GitHub job scores every liquid coin at every candle close, writes the full detail to this repo, and resolves what actually happened afterwards. Nothing is traded here; the companion paper-trading bot lives in its own repo.</p>'
+    + '<h3>Why collect this data</h3><p>Offline backtests can overfit; live forward-tracking cannot. This dataset measures, on data the models never saw: whether the magnitude chances stay calibrated, whether the direction lean keeps its 56–59% edge (and for which coins/windows/regimes), and how the top-5% band holds up. After a few weeks it becomes the training set for the next, better model.</p>'
+    + '<h3>What is logged per signal</h3><ul style="font-size:13px"><li><b>Features</b>: the 11 magnitude-model inputs and the 5 direction-model extras (taker flow, range position, short returns).</li><li><b>Predictions</b>: chance of any/up/down move for all 6 look-ahead windows, the calibrated direction lean, the event sizes, and the top-5% flag.</li><li><b>Outcomes</b>: which side touched first per window, how many candles it took, and the max move up/down (MFE/MAE) over 6 candles.</li></ul>'
+    + '<h3>Settings</h3><p><code>config.json</code> in the repo: <code>topN</code> (coins scanned, default 40), <code>minVolUsd</code> (universe volume floor, default $1M/day), <code>retentionDays</code> (default 120). Edit it on GitHub; the next run picks it up.</p></div>';
+}
+function renderTab() {
+  const t = S.tab, el = $('tabBody');
+  el.innerHTML = t === 'h1' ? signalTable('1h') : t === 'm15' ? signalTable('15m') : t === 'calib' ? calibTable() : t === 'data' ? dataTab() : aboutTab();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+}
+async function load() {
+  try {
+    const r = await fetch('data/state.json?t=' + Date.now());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    S.st = await r.json();
+    $('status').textContent = 'Last scan: ' + tstr(S.st.updatedMs); $('status').className = 'status ok';
+    render();
+  } catch (e) { $('status').textContent = 'No data yet (' + e.message + '). Run the workflow once from the Actions tab.'; $('status').className = 'status bad'; }
+}
+window.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; if (S.st) renderTab(); });
+  $('btnRefresh').onclick = load; load(); setInterval(load, 5 * 60000);
+});
+</script></body></html>

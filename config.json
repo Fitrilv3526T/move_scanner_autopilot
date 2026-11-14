@@ -1,0 +1,5 @@
+{
+  "topN": 40,
+  "minVolUsd": 1000000,
+  "retentionDays": 120
+}

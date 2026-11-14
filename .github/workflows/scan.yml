@@ -1,0 +1,27 @@
+name: Scanner autopilot
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: scan
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run the scanner
+        run: node scanner/run.js
+      - name: Save data to the repo
+        run: |
+          git config user.name "scanner-autopilot"
+          git config user.email "scanner-autopilot@users.noreply.github.com"
+          git add config.json docs/data
+          if git diff --cached --quiet; then echo "nothing to save"; else git commit -m "scan $(date -u +'%Y-%m-%d %H:%M')" && git pull --rebase -q && git push; fi

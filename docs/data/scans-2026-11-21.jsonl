@@ -1,2 +1,4 @@
 {"t":1795231781343,"tf":"15m","nUniv":40,"nRanked":36,"nLogged":35,"skipped":{"short":3,"stale":0,"floor":2,"nan":0},"candle":1795230000000,"errs":0}
 {"t":1795231789780,"tf":"1h","nUniv":40,"nRanked":36,"nLogged":35,"skipped":{"short":3,"stale":0,"floor":2,"nan":0},"candle":1795226400000,"errs":0}
+{"t":1795261046840,"tf":"15m","nUniv":40,"nRanked":38,"nLogged":37,"skipped":{"short":3,"stale":0,"floor":0,"nan":0},"candle":1795259700000,"errs":0}
+{"t":1795261055380,"tf":"1h","nUniv":40,"nRanked":38,"nLogged":37,"skipped":{"short":3,"stale":0,"floor":0,"nan":0},"candle":1795255200000,"errs":0}
